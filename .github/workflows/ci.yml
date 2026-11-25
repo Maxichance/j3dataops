@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  qualite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Installer les dépendances (figées par uv.lock)
+        run: uv sync --frozen
+
+      - name: Lint et format
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Tests + couverture minimale 85 %
+        run: uv run pytest -v --cov=src --cov-fail-under=85
+
+      - name: Build de l'image Docker
+        run: docker build -t weather-pipeline:ci .
+
+      - name: Smoke test du conteneur
+        run: |
+          docker run -d -p 8080:8080 --name wp weather-pipeline:ci
+          curl -fsS --retry 20 --retry-connrefused --retry-delay 1 localhost:8080/health
+          test "$(docker exec wp whoami)" = "appuser"
